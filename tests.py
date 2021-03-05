@@ -4,6 +4,7 @@ import os
 
 
 class SQLite3Test:
+
     """It's recommended to keep the sequence:
     1. Create object SQLite3Check
     2. Check is file exists
@@ -54,34 +55,29 @@ class SQLite3Test:
         return lines
 
     def is_table_exist(self, name):  # table name -> string
-        lines = self.run_query(
-            f"SELECT count(name) FROM sqlite_master WHERE type='table' AND name='{name}';").fetchall()
+        lines = self.run_query(f"SELECT count(name) FROM sqlite_master WHERE type='table' AND name='{name}';").fetchall()
         if lines[0][0] == 0:
             self.close()
             raise WrongAnswer(f"There is no table named '{name}' in database {self.file_name}")
 
-    def number_of_records(self, name, expected_lines):  # table name -> string, expected_lines -> integer
+    def number_of_records(self, name, expected_lines):   # table name -> string, expected_lines -> integer
         lines = self.run_query(f"SELECT COUNT(*) FROM {name}").fetchone()[0]
         if lines != expected_lines:
             self.close()
             raise WrongAnswer(f"Wrong number of records in table {name}. Expected {expected_lines}, found {lines}")
 
-    def is_column_exist(self, name,
-                        names):  # table name -> string, column names -> list of strings for all columns, or list with one string for one column
+    def is_column_exist(self, name, names):  # table name -> string, column names -> list of strings for all columns, or list with one string for one column
         lines = self.run_query(f'select * from {name}').description
         if len(names) != 1:
             if sorted(names) != sorted([line[0] for line in lines]):
                 self.close()
-                raise WrongAnswer(
-                    f"There is something wrong in table {name}. Found column names: {[line[0] for line in lines]}. Expected {names}'")
+                raise WrongAnswer(f"There is something wrong in table {name}. Found column names: {[line[0] for line in lines]}. Expected {names}'")
         else:
             if not any([names[0] == c_name for c_name in [line[0] for line in lines]]):
                 self.close()
-                raise WrongAnswer(
-                    f"There is something wrong in table {name}. Found column names: {[line[0] for line in lines]}. Expected to find '{names[0]}'")
+                raise WrongAnswer(f"There is something wrong in table {name}. Found column names: {[line[0] for line in lines]}. Expected to find '{names[0]}'")
 
-    def table_info(self, name, column,
-                   attribute):  # table name -> string, column name -> string, attr ("PK" Primary Key; "NN" Not null)
+    def table_info(self, name, column, attribute):   # table name -> string, column name -> string, attr ("PK" Primary Key; "NN" Not null)
         lines = self.run_query(f"PRAGMA table_info({name})").fetchall()
         if column not in [line[1] for line in lines]:
             raise WrongAnswer(f"There is no column {column}.")
@@ -95,8 +91,7 @@ class SQLite3Test:
                     return CheckResult.wrong(f"There is no NOT NULL parameter in {name} on column {column}.")
 
     def is_unique(self, name, column):  # table name -> string, column name -> string
-        lines = self.run_query(
-            f"SELECT inf.name FROM pragma_index_list('{name}') as lst, pragma_index_info(lst.name) as inf WHERE lst.[unique] = 1;").fetchall()
+        lines = self.run_query(f"SELECT inf.name FROM pragma_index_list('{name}') as lst, pragma_index_info(lst.name) as inf WHERE lst.[unique] = 1;").fetchall()
         if not any([column in line for line in lines]):
             raise WrongAnswer(f"There is no UNIQUE parameter in {name} on column {column}.")
         return True
@@ -111,14 +106,15 @@ class SQLite3Test:
 class FoodBlogStage1(StageTest):
     @dynamic_test
     def test(self):
-        # (db name, ((table, (columns,), nr of records, (PrimaryKeys, ), (NotNull, )))
+        #  (table, (columns,), nr_of_records, (PK, ), ((NOT NULL, ), (not NOT NULL, )))
         test_data = ("food_blog.db",
-                     (
-                         ("measures", ("measure_id", "measure_name"), 8, ("measure_id",), ((), ("measure_name",))),
-                         ("ingredients", ("ingredient_id", "ingredient_name"), 6, ("ingredient_id",),
-                          (("ingredient_name",), ())),
-                         ("meals", ("meal_id", "meal_name"), 4, ("meal_id",), (("meal_name",), ())),
-                     ))
+                    (
+                        ("measures", ("measure_id", "measure_name"), 8, ("measure_id", ), ((), ("measure_name", ))),
+                        ("ingredients", ("ingredient_id", "ingredient_name"), 6, ("ingredient_id", ), (("ingredient_name",), ())),
+                        ("meals", ("meal_id", "meal_name"), 4, ("meal_id", ), (("meal_name",), ())),
+                        ("recipes", ("recipe_id", "recipe_name", "recipe_description"), 0, ("recipe_id", ), (("recipe_name", ), ("recipe_description", ))),
+                    ))
+
         dbase = SQLite3Test(test_data[0])
 
         if not dbase.is_file_exist():
@@ -126,13 +122,10 @@ class FoodBlogStage1(StageTest):
 
         pr = TestedProgram()
         pr.start(test_data[0])
-        if not pr.is_finished():
-            return CheckResult.wrong("Your program unnecessarily waiting for input.")
 
         ans = dbase.is_file_exist()
         if ans:
-            return CheckResult.wrong(
-                f"The file '{dbase.file_name}' does not exist or is outside of the script directory.")
+            return CheckResult.wrong(f"The file '{dbase.file_name}' does not exist or is outside of the script directory.")
 
         dbase.connect()
 
@@ -155,6 +148,17 @@ class FoodBlogStage1(StageTest):
                 if not dbase.table_info(table[0], column, "NN"):
                     return CheckResult.wrong(f"Column {column} in table {table[0]} should not have Not Null attribute.")
 
+        for item in ("Milkshake\nBlend all ingredients and put in the fridge.\n",
+                    "Hot cacao\nPour the ingredients into the hot milk. Mix it up.\n",
+                    "Fruit salad\nCut strawberries and mix with other fruits. you can sprinkle everything with sugar.\n",
+                    "\n"):
+            pr.execute(item)
+
+        dbase.number_of_records("recipes", 3)
+
+        if not pr.is_finished():
+            return CheckResult.wrong("Your program unnecessarily waiting for input.")
+
         dbase.close()
         if not dbase.is_file_exist():
             os.remove(test_data[0])
@@ -164,3 +168,5 @@ class FoodBlogStage1(StageTest):
 
 if __name__ == '__main__':
     FoodBlogStage1().run_tests()
+
+
