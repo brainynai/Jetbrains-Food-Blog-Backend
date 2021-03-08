@@ -23,6 +23,13 @@ class DB(object):
             self.conn.commit()
             return c.fetchall()
 
+    def exNrowid(self, sql):
+        # print(sql)
+        with closing(self.conn.cursor()) as c:
+            rowid = c.execute(sql).lastrowid
+            self.conn.commit()
+            return rowid
+
 
 def stageOneInit(database):
     database.exNfetch('create table ingredients ('
@@ -53,14 +60,31 @@ def stageTwoInit(database):
                       'recipe_description text);')
 
 
+def stageThreeInit(database):
+    database.exNfetch('create table serve ('
+                      'serve_id integer primary key,'
+                      'recipe_id integer not null,'
+                      'meal_id integer not null,'
+                      'FOREIGN KEY(recipe_id) REFERENCES recipes(recipe_id)'
+                      'FOREIGN KEY(meal_id) REFERENCES meals(meal_id));')
+
+
 def recipeInput(database):
     while True:
-        recipeName = input()
+        recipeName = input('Enter recipe name: ')
         if len(recipeName) == 0:
             break
-        recDesc = input()
+        recDesc = input('Enter description: ')
 
-        database.exNfetch(f'insert into recipes(recipe_name, recipe_description) values ("{recipeName}","{recDesc}");')
+        recipeID = database.exNrowid(f'insert into recipes(recipe_name, recipe_description) values ("{recipeName}","{recDesc}");')
+
+        for mealTime in database.exNfetch('select * from meals'):
+            print(f'{mealTime[0]}) {mealTime[1]} ', end='')
+        print()
+
+        mealList = input('When can it be served: ')
+        for mealID in mealList.split():
+            database.exNfetch(f'insert into serve(recipe_id, meal_id) values ({recipeID},{mealID});')
 
 
 dbName = sys.argv[1]
@@ -68,5 +92,8 @@ dbName = sys.argv[1]
 with DB(dbName) as db:
     stageOneInit(db)
     stageTwoInit(db)
+    stageThreeInit(db)
     recipeInput(db)
+    #print(db.exNfetch('select * from serve'))
+
 
