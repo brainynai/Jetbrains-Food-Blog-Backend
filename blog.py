@@ -69,6 +69,18 @@ def stageThreeInit(database):
                       'FOREIGN KEY(meal_id) REFERENCES meals(meal_id));')
 
 
+def stageFourInit(database):
+    database.exNfetch('create table quantity ('
+                      'quantity_id integer primary key,'
+                      'quantity integer not null,'
+                      'recipe_id integer not null,'
+                      'measure_id integer not null,'
+                      'ingredient_id integer not null,'
+                      'FOREIGN KEY(recipe_id) REFERENCES recipes(recipe_id),'
+                      'FOREIGN KEY(measure_id) REFERENCES measures(measure_id),'
+                      'FOREIGN KEY(ingredient_id) REFERENCES ingredients(ingredient_id));')
+
+
 def recipeInput(database):
     while True:
         recipeName = input('Enter recipe name: ')
@@ -86,6 +98,39 @@ def recipeInput(database):
         for mealID in mealList.split():
             database.exNfetch(f'insert into serve(recipe_id, meal_id) values ({recipeID},{mealID});')
 
+        while True:
+            ingInput = input('Input qty of ingredient (number, unit, ingredient): ')
+            if len(ingInput) == 0:
+                break
+
+            ingTokens = ingInput.split()
+            qty = ingTokens[0]
+
+            if len(ingTokens) > 2:
+                unit = ingTokens[1]
+                ing = ingTokens[2]
+            else:
+                unit = ''
+                ing = ingTokens[1]
+
+            possMeasures = database.exNfetch(f"select * from measures where measure_name like '{unit}%'")
+            if len(possMeasures) != 1:
+                print('Measure not conclusive.')
+                continue
+
+            measureID = possMeasures[0][0]
+
+            possIng = database.exNfetch(f"select * from ingredients where ingredient_name like '%{ing}%'")
+            if len(possIng) != 1:
+                print('Ingredient not conclusive.')
+                continue
+
+            ingID = possIng[0][0]
+
+            database.exNfetch(f'insert into quantity(quantity, recipe_id, measure_id, ingredient_id) values ({qty}, {recipeID}, {measureID}, {ingID})')
+
+
+
 
 dbName = sys.argv[1]
 
@@ -93,7 +138,9 @@ with DB(dbName) as db:
     stageOneInit(db)
     stageTwoInit(db)
     stageThreeInit(db)
-    recipeInput(db)
+    stageFourInit(db)
     #print(db.exNfetch('select * from serve'))
+    recipeInput(db)
+
 
 
