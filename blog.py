@@ -106,6 +106,10 @@ def recipeInput(database):
             ingTokens = ingInput.split()
             qty = ingTokens[0]
 
+            if not qty.isdigit():
+                print('Qty needs to be a number. ')
+                continue
+
             if len(ingTokens) > 2:
                 unit = ingTokens[1]
                 ing = ingTokens[2]
