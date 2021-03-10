@@ -6,6 +6,9 @@ from contextlib import closing
 class DB(object):
     def __init__(self, databaseName):
         self.conn = sqlite3.connect(databaseName)
+        with closing(self.conn.cursor()) as c:
+            c.execute('PRAGMA foreign_keys = ON;')
+            self.conn.commit()
 
     def __enter__(self):
         return self
@@ -88,7 +91,8 @@ def recipeInput(database):
             break
         recDesc = input('Enter description: ')
 
-        recipeID = database.exNrowid(f'insert into recipes(recipe_name, recipe_description) values ("{recipeName}","{recDesc}");')
+        recipeID = database.exNrowid(
+            f'insert into recipes(recipe_name, recipe_description) values ("{recipeName}","{recDesc}");')
 
         for mealTime in database.exNfetch('select * from meals'):
             print(f'{mealTime[0]}) {mealTime[1]} ', end='')
@@ -113,11 +117,12 @@ def recipeInput(database):
             if len(ingTokens) > 2:
                 unit = ingTokens[1]
                 ing = ingTokens[2]
+                possMeasures = database.exNfetch(f"select * from measures where measure_name like '{unit}%'")
             else:
                 unit = ''
                 ing = ingTokens[1]
+                possMeasures = database.exNfetch(f"select * from measures where measure_name like '{unit}'")
 
-            possMeasures = database.exNfetch(f"select * from measures where measure_name like '{unit}%'")
             if len(possMeasures) != 1:
                 print('Measure not conclusive.')
                 continue
@@ -131,20 +136,68 @@ def recipeInput(database):
 
             ingID = possIng[0][0]
 
-            database.exNfetch(f'insert into quantity(quantity, recipe_id, measure_id, ingredient_id) values ({qty}, {recipeID}, {measureID}, {ingID})')
+            database.exNfetch(
+                f'insert into quantity(quantity, recipe_id, measure_id, ingredient_id) values ({qty}, {recipeID}, {measureID}, {ingID})')
 
 
+def parseArgs(ingArg, mealArg):
+    ingStr = ingArg.lstrip('--ingredients').strip('=')
+    mealStr = mealArg.lstrip('--meals').strip('=')
+
+    ingL = ingStr.split(',')
+    mealL = mealStr.split(',')
+
+    return ingL, mealL
+
+
+def getRecipes(database, ingredients, meals):
+    ingComma = '("' + '","'.join(ingredients) + '")'
+    mealComma = '("' + '","'.join(meals) + '")'
+
+    print(ingComma, mealComma)
+
+    ingIDsTuples = database.exNfetch(f'select * from ingredients where ingredient_name in {ingComma}')
+    mealIDsTuples = database.exNfetch(f'select * from meals where meal_name in {mealComma}')
+
+    print(ingIDsTuples, mealIDsTuples)
+
+    ingIDsComma = '(' + ','.join([str(i[0]) for i in ingIDsTuples]) + ')'
+    mealIDsComma = '(' + ','.join([str(i[0]) for i in mealIDsTuples]) + ')'
+
+    recipeIDTuples = database.exNfetch(f'select * from quantity where ingredient_id in {ingIDsComma}')
+    recipeIDsComma = '(' + ','.join([str(i[2]) for i in recipeIDTuples]) + ')'
+
+    print(recipeIDTuples, recipeIDsComma)
+
+    serveIDsTuples = database.exNfetch(f'select * from serve where recipe_id in {recipeIDsComma} and meal_id in {mealIDsComma}')
+
+    recipeIDs = '(' + ','.join([str(i[1]) for i in serveIDsTuples]) + ')'
+
+    recipeTuples = database.exNfetch(f'select * from recipes where recipe_id in {recipeIDs}')
+
+    if len(recipeTuples) == 0:
+        print('There are no such recipes in the database.')
+    else:
+        print('Recipes selected for you: ', end='')
+        print(', '.join([str(i[1]) for i in recipeTuples]))
 
 
 dbName = sys.argv[1]
+ingList, mealList = [], []
+
+if len(sys.argv) == 4:
+    ingList, mealList = parseArgs(sys.argv[2], sys.argv[3])
+elif len(sys.argv) != 2:
+    print(f'Error: Expected 0 or 2 arguments. Found {len(sys.argv)}.')
+    exit()
 
 with DB(dbName) as db:
-    stageOneInit(db)
-    stageTwoInit(db)
-    stageThreeInit(db)
-    stageFourInit(db)
-    #print(db.exNfetch('select * from serve'))
-    recipeInput(db)
-
-
-
+    if len(sys.argv) == 4:
+        getRecipes(db, ingList, mealList)
+    else:
+        stageOneInit(db)
+        stageTwoInit(db)
+        stageThreeInit(db)
+        stageFourInit(db)
+        # print(db.exNfetch('select * from serve'))
+        recipeInput(db)
